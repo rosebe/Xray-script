@@ -19,8 +19,8 @@ using_swap=""
 using_swap_now=0
 
 #安装信息
-nginx_version="nginx-1.19.9"
-openssl_version="openssl-openssl-3.0.0-alpha14"
+nginx_version="nginx-1.20.0"
+openssl_version="openssl-openssl-3.0.0-alpha15"
 nginx_prefix="/usr/local/nginx"
 nginx_config="${nginx_prefix}/conf.d/xray.conf"
 nginx_service="/etc/systemd/system/nginx.service"
@@ -36,7 +36,7 @@ cloudreve_prefix="/usr/local/cloudreve"
 cloudreve_service="/etc/systemd/system/cloudreve.service"
 cloudreve_is_installed=""
 
-nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-21.0.0.zip"
+nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-21.0.1.zip"
 
 xray_config="/usr/local/etc/xray/config.json"
 xray_is_installed=""
@@ -812,7 +812,7 @@ doupdate()
         echo -e "\\n\\n\\n"
         tyblue "------------------请选择升级系统版本--------------------"
         tyblue " 1.最新beta版(现在是21.04)(2021.4)"
-        tyblue " 2.最新发行版(现在是21.04)(2021.4)"
+        tyblue " 2.最新发行版(现在是20.10)(2021.4)"
         tyblue " 3.最新LTS版(现在是20.04)(2021.4)"
         tyblue "-------------------------版本说明-------------------------"
         tyblue " beta版：即测试版"
@@ -1150,8 +1150,8 @@ install_bbr()
             tyblue "重启系统bbr2_ECN将自动关闭"
             return 0
         fi
-        tyblue "提示：bbr2_ECN 会在系统重启后失效"
-        tyblue " 若重启系统了，可以 运行脚本 -> 安装/更新bbr -> 启用bbr2_ECN 来启用bbr2_ECN"
+        tyblue "提示：bbr2_ECN 会在系统重启后自动关闭"
+        tyblue " 若重启系统，可以 运行脚本 -> 安装/更新bbr -> 启用bbr2_ECN 来重新启用bbr2_ECN"
         yellow "按回车键以继续。。。"
         read -s
         echo Y > /sys/module/tcp_bbr2/parameters/ecn_enable
@@ -1222,7 +1222,7 @@ install_bbr()
         if [ "$(cat /sys/module/tcp_bbr2/parameters/ecn_enable 2>/dev/null)" == "Y" ] && [ "$(sysctl net.ipv4.tcp_ecn | cut -d = -f 2 | awk '{print $1}')" == "1" ]; then
             green  "       已启用"
         else
-            tyblue "       未启用"
+            blue   "       未启用"
         fi
         echo
         local choice=""
@@ -1830,12 +1830,12 @@ cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
     location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/)  { return 404; }
     location ~ ^/(?:\\.|autotest|occ|issue|indie|db_|console)              { return 404; }
     location ~ \\.php(?:$|/) {
+        fastcgi_split_path_info ^(.+?\\.php)(/.*)$;
         try_files \$fastcgi_script_name =404;
+        fastcgi_param PATH_INFO \$fastcgi_path_info;
         include fastcgi.conf;
         fastcgi_param REMOTE_ADDR 127.0.0.1;
         fastcgi_param SERVER_PORT 443;
-        fastcgi_split_path_info ^(.+?\\.php)(/.*)$;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
         fastcgi_param HTTPS on;
         fastcgi_param modHeadersAvailable true;
         fastcgi_param front_controller_active true;
