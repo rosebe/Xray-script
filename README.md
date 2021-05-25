@@ -107,7 +107,7 @@ Red Hat基系统(包括CentOS、fedora)：
 ```
 ### 2. 获取/更新脚本
 ```bash
-wget -O Xray-TLS+Web-setup.sh --no-check-certificate https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh
+wget -O Xray-TLS+Web-setup.sh https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh
 ```
 ### 3. 执行脚本
 ```bash
@@ -242,7 +242,7 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 |--with-db4|libdb-dev|libdb-devel|
 |--with-tcadb|libtokyocabinet-dev|tokyocabinet-devel|
 |--with-lmdb|liblmdb-dev|lmdb-devel|
-|--with-enchant|libenchant-dev|enchant-devel|
+|--with-enchant|libenchant-2-dev/libenchant-dev|enchant-devel|
 |--with-ffi|libffi-dev|libffi-devel|
 |--enable-gd|libpng-dev|libpng-devel|
 |--with-external-gd|libgd-dev|gd-devel|
