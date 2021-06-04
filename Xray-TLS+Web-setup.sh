@@ -19,8 +19,8 @@ using_swap=""
 using_swap_now=0
 
 #安装信息
-nginx_version="nginx-1.20.0"
-openssl_version="openssl-openssl-3.0.0-alpha16"
+nginx_version="nginx-1.21.0"
+openssl_version="openssl-openssl-3.0.0-alpha17"
 nginx_prefix="/usr/local/nginx"
 nginx_config="${nginx_prefix}/conf.d/xray.conf"
 nginx_service="/etc/systemd/system/nginx.service"
@@ -36,7 +36,7 @@ cloudreve_prefix="/usr/local/cloudreve"
 cloudreve_service="/etc/systemd/system/cloudreve.service"
 cloudreve_is_installed=""
 
-nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-21.0.1.zip"
+nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-21.0.2.zip"
 
 xray_config="/usr/local/etc/xray/config.json"
 xray_is_installed=""
@@ -131,6 +131,22 @@ check_sudo()
 version_ge()
 {
     test "$(echo -e "$1\\n$2" | sort -rV | head -n 1)" == "$1"
+}
+#检查脚本更新
+check_script_update()
+{
+    [ "$(md5sum "${BASH_SOURCE[0]}" | awk '{print $1}')" == "$(md5sum <(wget -O - "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh") | awk '{print $1}')" ] && return 1 || return 0
+}
+#更新脚本
+update_script()
+{
+    if wget -O "${BASH_SOURCE[0]}" "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh" || wget -O "${BASH_SOURCE[0]}" "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh"; then
+        green "脚本更新完成，请重新运行脚本！"
+        exit 0
+    else
+        red "更新脚本失败！"
+        exit 1
+    fi
 }
 #安装单个重要依赖
 check_important_dependence_installed()
@@ -811,9 +827,9 @@ doupdate()
         fi
         echo -e "\\n\\n\\n"
         tyblue "------------------请选择升级系统版本--------------------"
-        tyblue " 1.最新beta版(现在是21.04)(2021.4)"
-        tyblue " 2.最新发行版(现在是20.10)(2021.4)"
-        tyblue " 3.最新LTS版(现在是20.04)(2021.4)"
+        tyblue " 1.最新beta版(现在是21.10)(2021.5)"
+        tyblue " 2.最新发行版(现在是21.04)(2021.5)"
+        tyblue " 3.最新LTS版(现在是20.04)(2021.5)"
         tyblue "-------------------------版本说明-------------------------"
         tyblue " beta版：即测试版"
         tyblue " 发行版：即稳定版"
@@ -878,11 +894,6 @@ doupdate()
                     do-release-upgrade
                     ;;
             esac
-            if ! version_ge "$systemVersion" 20.04; then
-                sed -i 's/Prompt=lts/Prompt=normal/' /etc/update-manager/release-upgrades
-                do-release-upgrade
-                do-release-upgrade
-            fi
             $debian_package_manager update
             $debian_package_manager -y --auto-remove --purge --no-install-recommends full-upgrade
         done
@@ -1678,6 +1689,8 @@ install_php_part1()
     cd "${php_version}"
     make install
     mv sapi/fpm/php-fpm.service "${php_prefix}/php-fpm.service.default.temp"
+    mv php.ini-production "${php_prefix}"
+    mv php.ini-development "${php_prefix}"
     cd ..
     rm -rf "${php_version}"
     instal_php_imagick
@@ -1693,10 +1706,15 @@ install_php_part2()
     echo "listen = /dev/shm/php-fpm_unixsocket/php.sock" >> ${php_prefix}/etc/php-fpm.d/www.conf
     sed -i '/^[ \t]*env\[PATH\][ \t]*=/d' ${php_prefix}/etc/php-fpm.d/www.conf
     echo "env[PATH] = $PATH" >> ${php_prefix}/etc/php-fpm.d/www.conf
-cat > ${php_prefix}/etc/php.ini << EOF
+    rm -rf "${php_prefix}/etc/php.ini"
+    cp "${php_prefix}/php.ini-production" "${php_prefix}/etc/php.ini"
+cat >> ${php_prefix}/etc/php.ini << EOF
+
 [PHP]
 memory_limit=-1
-upload_max_filesize=-1
+post_max_size=0
+upload_max_filesize=0
+max_file_uploads=50000
 extension=imagick.so
 zend_extension=opcache.so
 opcache.enable=1
@@ -1831,18 +1849,20 @@ cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
         access_log off;
     }
     location ^~ /.well-known {
-        location = /.well-known/carddav     { return 301 https://\$host/remote.php/dav/; }
-        location = /.well-known/caldav      { return 301 https://\$host/remote.php/dav/; }
-        location ^~ /.well-known            { return 301 https://\$host/index.php\$uri; }
-        try_files \$uri \$uri/ =404;
+        location = /.well-known/carddav { return 301 https://\$host/remote.php/dav/; }
+        location = /.well-known/caldav  { return 301 https://\$host/remote.php/dav/; }
+        location /.well-known/acme-challenge    { try_files \$uri \$uri/ =404; }
+        location /.well-known/pki-validation    { try_files \$uri \$uri/ =404; }
+        return 301 https://\$host/index.php\$request_uri;
     }
     location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/)  { return 404; }
-    location ~ ^/(?:\\.|autotest|occ|issue|indie|db_|console)              { return 404; }
+    location ~ ^/(?:\\.|autotest|occ|issue|indie|db_|console)                { return 404; }
     location ~ \\.php(?:$|/) {
         fastcgi_split_path_info ^(.+?\\.php)(/.*)$;
+        set \$path_info \$fastcgi_path_info;
         try_files \$fastcgi_script_name =404;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
         include fastcgi.conf;
+        fastcgi_param PATH_INFO \$path_info;
         fastcgi_param REMOTE_ADDR 127.0.0.1;
         fastcgi_param SERVER_PORT 443;
         fastcgi_param HTTPS on;
@@ -1861,6 +1881,9 @@ cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
         try_files \$uri /index.php\$request_uri;
         expires 7d;
         access_log off;
+    }
+    location /remote {
+        return 301 https://\$host/remote.php\$request_uri;
     }
     location / {
         try_files \$uri \$uri/ /index.php\$request_uri;
@@ -2228,8 +2251,7 @@ cat >> $xray_config <<EOF
                         {
                             "certificateFile": "${nginx_prefix}/certs/${true_domain_list[$i]}.cer",
                             "keyFile": "${nginx_prefix}/certs/${true_domain_list[$i]}.key",
-                            "ocspStapling": 3600,
-                            "oneTimeLoading": true
+                            "ocspStapling": 3600
 EOF
         ((i==${#true_domain_list[@]}-1)) && echo "                        }" >> $xray_config || echo "                        }," >> $xray_config
     done
@@ -2633,11 +2655,7 @@ install_update_xray_tls_web()
     check_centos8_epel
     if [ $update -eq 0 ] && check_script_update; then
         green "脚本可升级"
-        if ask_if "是否升级脚本？(y/n)"; then
-            update_script
-            tyblue "升级完成，请重新运行脚本"
-            exit 0
-        fi
+        ask_if "是否升级脚本？(y/n)" && update_script
     fi
     check_ssh_timeout
     uninstall_firewall
@@ -2818,18 +2836,6 @@ install_update_xray_tls_web()
 }
 
 #功能型函数
-check_script_update()
-{
-    [ "$(md5sum "${BASH_SOURCE[0]}" | awk '{print $1}')" == "$(md5sum <(wget -O - "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh") | awk '{print $1}')" ] && return 1 || return 0
-}
-update_script()
-{
-    if ! wget -O "${BASH_SOURCE[0]}" "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh" && ! wget -O "${BASH_SOURCE[0]}" "https://github.com/kirin10000/Xray-script/raw/main/Xray-TLS+Web-setup.sh"; then
-        red "更新脚本失败！"
-        yellow "按回车键继续或Ctrl+c中止"
-        read -s
-    fi
-}
 full_install_php()
 {
     install_base_dependence
@@ -3449,11 +3455,20 @@ start_menu()
     if [ $choice -eq 1 ]; then
         install_update_xray_tls_web
     elif [ $choice -eq 2 ]; then
-        update_script && bash "${BASH_SOURCE[0]}" --update
+        if check_script_update; then
+            green "脚本可升级！"
+            if ask_if "是否升级脚本？(y/n)"; then
+                update_script
+            else
+                red "请先升级脚本！"
+                exit 0
+            fi
+        fi
+        bash "${BASH_SOURCE[0]}" --update
     elif [ $choice -eq 3 ]; then
         if check_script_update; then
             green "脚本可升级！"
-            ask_if "是否升级脚本？(y/n)" && update_script && green "脚本更新完成"
+            ask_if "是否升级脚本？(y/n)" && update_script
         else
             green "脚本已经是最新版本"
         fi
