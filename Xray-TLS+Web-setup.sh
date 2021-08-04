@@ -11,36 +11,30 @@ debian_package_manager=""
 redhat_package_manager=""
 #CPU线程数
 cpu_thread_num=""
-#物理内存大小
-mem=""
-#在运行脚本前物理内存+swap大小
-mem_total=""
-#在运行脚本前是否有启用swap
-using_swap=""
 #现在有没有通过脚本启动swap
 using_swap_now=0
 #系统时区
 timezone=""
 
 #安装信息
-nginx_version="nginx-1.21.0"
-openssl_version="openssl-openssl-3.0.0-beta1"
+nginx_version="nginx-1.21.1"
+openssl_version="openssl-openssl-3.0.0-beta2"
 nginx_prefix="/usr/local/nginx"
 nginx_config="${nginx_prefix}/conf.d/xray.conf"
 nginx_service="/etc/systemd/system/nginx.service"
 nginx_is_installed=""
 
-php_version="php-8.0.7"
+php_version="php-8.0.9"
 php_prefix="/usr/local/php"
 php_service="/etc/systemd/system/php-fpm.service"
 php_is_installed=""
 
-cloudreve_version="3.3.1"
+cloudreve_version="3.3.2"
 cloudreve_prefix="/usr/local/cloudreve"
 cloudreve_service="/etc/systemd/system/cloudreve.service"
 cloudreve_is_installed=""
 
-nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-21.0.2.zip"
+nextcloud_url="https://download.nextcloud.com/server/releases/nextcloud-22.0.0.zip"
 
 xray_config="/usr/local/etc/xray/config.json"
 xray_is_installed=""
@@ -104,7 +98,7 @@ blue()                             #蓝色
 check_base_command()
 {
     local i
-    local temp_command_list=('bash' 'true' 'false' 'exit' 'echo' 'test' 'free' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'tar' 'cat' 'find' 'type' 'command' 'kill' 'pkill' 'wc' 'ls' 'mktemp')
+    local temp_command_list=('bash' 'true' 'false' 'exit' 'echo' 'test' 'free' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'tar' 'cat' 'find' 'type' 'command' 'kill' 'pkill' 'wc' 'ls' 'mktemp' 'swapon' 'swapoff' 'mkswap' 'chmod' 'chown')
     for i in ${!temp_command_list[@]}
     do
         if ! command -V "${temp_command_list[$i]}" > /dev/null; then
@@ -208,8 +202,13 @@ install_dependence()
             local temp_redhat_install="$redhat_package_manager -y --enablerepo "
         fi
         if ! $redhat_package_manager -y install "$@"; then
-            if [ "$release" == "centos" ] && version_ge "$systemVersion" 8 && $temp_redhat_install"epel,PowerTools" install "$@";then
+            if $temp_redhat_install'epel' install "$@"; then
                 return 0
+            fi
+            if [ "$release" == "centos" ] && version_ge "$systemVersion" 8;then
+                if $temp_redhat_install"epel,powertools" install "$@" || $temp_redhat_install"epel,PowerTools" install "$@"; then
+                    return 0
+                fi
             fi
             if $temp_redhat_install'*' install "$@"; then
                 return 0
@@ -286,17 +285,14 @@ swap_on()
         yellow "按回车键继续或者Ctrl+c退出"
         read -s
     fi
-    if [ $mem_total -lt $1 ]; then
-        tyblue "内存不足$1M，自动申请swap。。"
-        if dd if=/dev/zero of=${temp_dir}/swap bs=1M count=$(($1-mem)); then
-            chmod 0600 ${temp_dir}/swap
-            mkswap ${temp_dir}/swap
-            swapoff -a
-            swapon ${temp_dir}/swap
+    local need_swap_size=$(( $1+$(free -m | sed -n 2p | awk '{print $3}')+$(free -m | sed -n 3p | awk '{print $3}')-$(free -m | sed -n 2p | awk '{print $2}')-$(free -m | sed -n 3p | awk '{print $2}') ))
+    if [ $need_swap_size -gt 0 ]; then
+        tyblue "可用内存不足$1M，自动申请swap。。"
+        if dd if=/dev/zero of=${temp_dir}/swap bs=1M count=$need_swap_size && chmod 0600 ${temp_dir}/swap && mkswap ${temp_dir}/swap && swapon ${temp_dir}/swap; then
             using_swap_now=1
         else
             rm -rf ${temp_dir}/swap
-            red   "开启swap失败！"
+            red    "开启swap失败！"
             yellow "可能是机器内存和硬盘空间都不足"
             green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的支持"
             yellow "按回车键继续或者Ctrl+c退出"
@@ -308,10 +304,15 @@ swap_off()
 {
     if [ $using_swap_now -eq 1 ]; then
         tyblue "正在恢复swap。。。"
-        swapoff -a
-        rm -rf ${temp_dir}/swap
-        [ $using_swap -ne 0 ] && swapon -a
-        using_swap_now=0
+        if swapoff ${temp_dir}/swap && rm -rf ${temp_dir}/swap; then
+            using_swap_now=0
+        else
+            red    "关闭swap失败！"
+            green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的
+支持"
+            yellow "按回车键继续或者Ctrl+c退出"
+            read -s
+        fi
     fi
 }
 #启用/禁用php cloudreve
@@ -596,9 +597,6 @@ case "$(uname -m)" in
         ;;
 esac
 
-mem="$(free -m | sed -n 2p | awk '{print $2}')"
-mem_total="$(($(free -m | sed -n 2p | awk '{print $2}')+$(free -m | tail -n 1 | awk '{print $2}')))"
-[[ "$(free -b | tail -n 1 | awk '{print $2}')" -ne "0" ]] && using_swap=1 || using_swap=0
 if [ $is_installed -eq 1 ] && ! grep -q "domain_list=" $nginx_config; then
     red "脚本进行了一次不向下兼容的更新"
     yellow "请选择 \"重新安装\"选项 来升级"
@@ -829,16 +827,7 @@ doupdate()
 {
     updateSystem()
     {
-        if ! [[ "$(type -P do-release-upgrade)" ]]; then
-            if ! $debian_package_manager -y --no-install-recommends install ubuntu-release-upgrader-core; then
-                $debian_package_manager update
-                if ! $debian_package_manager -y --no-install-recommends install ubuntu-release-upgrader-core; then
-                    red    "脚本出错！"
-                    yellow "按回车键继续或者Ctrl+c退出"
-                    read -s
-                fi
-            fi
-        fi
+        check_important_dependence_installed "ubuntu-release-upgrader-core"
         echo -e "\\n\\n\\n"
         tyblue "------------------请选择升级系统版本--------------------"
         tyblue " 1.最新beta版(现在是21.10)(2021.5)"
@@ -908,8 +897,12 @@ doupdate()
                     do-release-upgrade
                     ;;
             esac
+            $debian_package_manager -y --purge autoremove
             $debian_package_manager update
+            $debian_package_manager -y --purge autoremove
             $debian_package_manager -y --auto-remove --purge --no-install-recommends full-upgrade
+            $debian_package_manager -y --purge autoremove
+            $debian_package_manager clean
         done
     }
     while ((1))
@@ -919,7 +912,7 @@ doupdate()
         green  " 1. 更新已安装软件，并升级系统 (Ubuntu专享)"
         green  " 2. 仅更新已安装软件"
         red    " 3. 不更新"
-        if [ "$release" == "ubuntu" ] && ((mem<400)); then
+        if [ "$release" == "ubuntu" ] && (($(free -m | sed -n 2p | awk '{print $2}')<400)); then
             red "检测到内存过小，升级系统可能导致无法开机，请谨慎选择"
         fi
         echo
@@ -944,12 +937,14 @@ doupdate()
         yellow " 更新过程中遇到问话/对话框，如果不明白，选择yes/y/第一个选项"
         yellow " 按回车键继续。。。"
         read -s
-        $redhat_package_manager -y autoremove
-        $redhat_package_manager -y update
+        $debian_package_manager -y --purge autoremove
         $debian_package_manager update
+        $debian_package_manager -y --purge autoremove
         $debian_package_manager -y --auto-remove --purge --no-install-recommends full-upgrade
         $debian_package_manager -y --purge autoremove
         $debian_package_manager clean
+        $redhat_package_manager -y autoremove
+        $redhat_package_manager -y update
         $redhat_package_manager -y autoremove
         $redhat_package_manager clean all
     fi
@@ -1257,8 +1252,11 @@ install_bbr()
         done
         if (( 1<=choice&&choice<=4 )); then
             if (( choice==1 || choice==4 )) && ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]) && ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
-                red    "系统版本太低！"
-                yellow "请更换新系统或使用xanmod内核"
+                red    "当前系统版本过低，不支持安装此内核！"
+                green  "请使用新系统或选择安装xanmod内核"
+            elif (( choice==1 || choice==4 )) && ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]) && ! dpkg-deb --help | grep -qw "zstd"; then
+                red    "当前系统版本过低，不支持安装此内核！"
+                green  "请使用新系统或选择安装xanmod内核"
             elif (( choice==2 || choice==3 )) && ([ $release == "centos" ] || [ $release == "rhel" ] || [ $release == "fedora" ] || [ $release == "other-redhat" ]); then
                 red "xanmod内核仅支持Debian系的系统，如Ubuntu、Debian、deepin、UOS"
             else
@@ -1661,7 +1659,7 @@ compile_php()
     else
         ./configure --prefix=${php_prefix} --with-libdir=lib64 --enable-embed=shared --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data --with-fpm-systemd --with-fpm-acl --disable-phpdbg --with-layout=GNU --with-openssl --with-kerberos --with-external-pcre --with-pcre-jit --with-zlib --enable-bcmath --with-bz2 --enable-calendar --with-curl --enable-dba --with-gdbm --with-db4 --with-db1 --with-tcadb --with-lmdb --with-enchant --enable-exif --with-ffi --enable-ftp --enable-gd --with-external-gd --with-webp --with-jpeg --with-xpm --with-freetype --enable-gd-jis-conv --with-gettext --with-gmp --with-mhash --with-imap --with-imap-ssl --enable-intl --with-ldap --with-ldap-sasl --enable-mbstring --with-mysqli --with-mysql-sock --with-unixODBC --enable-pcntl --with-pdo-dblib --with-pdo-mysql --with-zlib-dir --with-pdo-odbc=unixODBC,/usr --with-pdo-pgsql --with-pgsql --with-pspell --with-libedit --enable-shmop --with-snmp --enable-soap --enable-sockets --with-sodium --with-password-argon2 --enable-sysvmsg --enable-sysvsem --enable-sysvshm --with-tidy --with-xsl --with-zip --enable-mysqlnd --with-pear CPPFLAGS="-g0 -O3" CFLAGS="-g0 -O3" CXXFLAGS="-g0 -O3"
     fi
-    swap_on 1800
+    swap_on 2048
     if ! make -j$cpu_thread_num; then
         swap_off
         red    "php编译失败！"
@@ -3324,7 +3322,7 @@ simplify_system()
     if [ $release == "centos" ] || [ $release == "rhel" ] || [ $release == "fedora" ] || [ $release == "other-redhat" ]; then
         $redhat_package_manager -y remove openssl "perl*"
     else
-        local temp_remove_list=('openssl' 'snapd' 'kdump-tools' 'flex' 'make' 'automake' '^cloud-init' 'pkg-config' '^gcc-[1-9][0-9]*$' 'libffi-dev' '^cpp-[1-9][0-9]*$' 'curl' '^python' '^python.*:i386' '^libpython' '^libpython.*:i386' 'dbus' 'cron' 'anacron' 'cron' 'at' 'open-iscsi' 'rsyslog' 'acpid' 'libnetplan0' 'glib-networking-common' 'bcache-tools' '^bind([0-9]|-|$)')
+        local temp_remove_list=('openssl' 'snapd' 'kdump-tools' 'flex' 'make' 'automake' '^cloud-init' 'pkg-config' '^gcc-[1-9][0-9]*$' 'libffi-dev' '^cpp-[1-9][0-9]*$' 'curl' '^python' '^python.*:i386' '^libpython' '^libpython.*:i386' 'dbus' 'cron' 'anacron' 'cron' 'at' 'open-iscsi' 'rsyslog' 'acpid' 'libnetplan0' 'glib-networking-common' 'bcache-tools' '^bind([0-9]|-|$)' 'lshw' 'thermald' 'libdbus-glib-1-2' 'libevdev2' 'libupower-glib3' 'usb.ids')
         if ! $debian_package_manager -y --auto-remove purge "${temp_remove_list[@]}"; then
             $debian_package_manager -y -f install
             for i in ${!temp_remove_list[@]}
