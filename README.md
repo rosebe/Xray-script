@@ -96,14 +96,14 @@
 ```
 缺点就是编译耗时长
 ## 脚本使用说明
-### 1. 安装wget
+### 1. 安装wget && ca-certificates
 Debian基系统(包括Ubuntu、Debian、deepin)：
 ```bash
-[[ "$(type -P wget)" ]] || apt -y install wget || (apt update && apt -y install wget)
+apt --no-install-recommends -y install wget ca-certificates || (apt update && apt --no-install-recommends -y install wget ca-certificates)
 ```
 Red Hat基系统(包括CentOS、fedora)：
 ```bash
-[[ "$(type -P wget)" ]] || dnf -y install wget || yum -y install wget
+dnf -y install wget ca-certificates || yum -y install wget ca-certificates
 ```
 ### 2. 获取/更新脚本
 ```bash
@@ -160,7 +160,7 @@ Cloudreve 与 Nextcloud 的区别如下：
 
 3. **自定义静态网站**
 
-自定义的静态网站，不建议小白选择。默认是Nextcloud的登陆界面，强烈建议自行更换，因为这里Nextcloud是静态网站，没有php，无法进行交互，很容易被主动探测出来。
+可以放置自己的静态网站源代码，不建议小白选择。
 
 4. **自定义反向代理网站**
 
@@ -197,23 +197,36 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 脚本可能自动安装以下依赖：
 |用途|Debian基系统|Red Hat基系统|
 |-|-|-|
-|netstat|net-tools|net-tools|
-|lsb_release|lsb-release|redhat-lsb-core|
+|yumdb set(标记包手动安装)||yum-utils|
+|setenforce/getenforce(关闭SELinux)|selinux-utils|libselinux-utils|
+|ss(检查端口占用)|iproute2|iproute|
+|lsb_release(查看系统版本)|lsb-release|redhat-lsb-core|
 |wget/curl https|ca-certificates|ca-certificates|
 |wget|wget|wget|
+|curl|curl|curl|
+|kill/pkill/ps/sysctl/free|procps|procps-ng|
+|epel源||epel-release|
+|do-release-upgrade(升级系统)|ubuntu-release-upgrader-core||
 |unzip|unzip|unzip|
 |curl|curl|curl|
-|acme.sh依赖|openssl|openssl|
-|acme.sh依赖|cron|crontabs|
-|编译基础：|||
+|安装bbr内核|linux-base||
+|**编译基础：**|||
+|下载源码文件|wget|wget|
+|解压tar源码文件|tar|tar|
+|解压tar.gz源码文件|gzip|gzip|
+|解压tar.xz源码文件|xz-utils|xz|
 |gcc|gcc|gcc|
 |g++|g++|gcc-c++|
 |make|make|make|
-|编译openssl：|||
-|||perl-IPC-Cmd|
-|||perl-Getopt-Long|
-|||perl-Data-Dumper|
-|编译Nginx：|||
+|**acme.sh依赖：**|||
+||curl|curl|
+||openssl|openssl|
+||cron|crontabs|
+|**编译openssl：**|||
+||perl-base(within libperl-dev)|perl-IPC-Cmd|
+||perl-modules-5.32(within libperl-dev)|perl-Getopt-Long|
+||libperl5.32(within libperl-dev)|perl-Data-Dumper|
+|**编译Nginx：**|||
 ||libpcre3-dev|pcre-devel|
 ||zlib1g-dev|zlib-devel|
 |--with-http_xslt_module|libxml2-dev|libxml2-devel|
@@ -224,7 +237,7 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 |--with-http_perl_module||perl-ExtUtils-Embed|
 |--with-libatomic|libatomic-ops-dev|libatomic_ops-devel|
 ||libperl-dev|perl-devel|
-|编译php：|||
+|**编译php：**|||
 ||pkg-config|pkgconf-pkg-config|
 ||libxml2-dev|libxml2-devel|
 ||libsqlite3-dev|sqlite-devel|
@@ -275,7 +288,7 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 ## 注
 1.本文链接(官网)：https://github.com/kirin10000/Xray-script
 
-2.参考教程：https://www.v2fly.org/config/overview.html https://guide.v2fly.org/ https://docs.nextcloud.com/server/21/admin_manual/installation/source_installation.html https://docs.cloudreve.org/
+2.参考教程：https://www.v2fly.org/config/overview.html https://guide.v2fly.org/ https://docs.nextcloud.com/server/latest/admin_manual/installation/source_installation.html https://docs.cloudreve.org/
 
 3.域名证书申请：https://github.com/acmesh-official/acme.sh
 
