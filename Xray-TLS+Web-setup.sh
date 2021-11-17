@@ -18,7 +18,7 @@ using_swap_now=0
 timezone=""
 
 #安装信息
-nginx_version="nginx-1.21.3"
+nginx_version="nginx-1.21.4"
 openssl_version="openssl-openssl-3.0.0"
 nginx_prefix="/usr/local/nginx"
 nginx_config="${nginx_prefix}/conf.d/xray.conf"
@@ -99,7 +99,7 @@ blue()                             #蓝色
 check_base_command()
 {
     local i
-    local temp_command_list=('bash' 'true' 'false' 'exit' 'echo' 'test' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'cat' 'find' 'type' 'command' 'wc' 'ls' 'mktemp' 'swapon' 'swapoff' 'mkswap' 'chmod' 'chown' 'export')
+    local temp_command_list=('bash' 'sh' 'install' 'true' 'false' 'exit' 'echo' 'test' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'cat' 'find' 'type' 'command' 'wc' 'ls' 'mktemp' 'swapon' 'swapoff' 'mkswap' 'chmod' 'chown' 'chgrp' 'export')
     for i in "${temp_command_list[@]}"
     do
         if ! command -V "${i}" > /dev/null; then
@@ -520,23 +520,34 @@ get_config_info()
 gen_cflags()
 {
     cflags="-g0 -O3"
+    if gcc -v --help 2>&1 | grep -qw "\\-fexceptions"; then
+        cflags="${cflags} -fno-exceptions"
+    elif gcc -v --help 2>&1 | grep -qw "\\-fhandle\\-exceptions"; then
+        cflags="${cflags} -fno-handle-exceptions"
+    fi
     if gcc -v --help 2>&1 | grep -qw "\\-fasynchronous\\-unwind\\-tables"; then
         cflags="${cflags} -fno-asynchronous-unwind-tables"
-    fi
-    if gcc -v --help 2>&1 | grep -qw "\\-fcf\\-protection"; then
-        cflags="${cflags} -fcf-protection=none"
-    fi
-    if gcc -v --help 2>&1 | grep -qw "\\-fsplit\\-stack"; then
-        cflags="${cflags} -fno-split-stack"
     fi
     if gcc -v --help 2>&1 | grep -qw "\\-fstack\\-check"; then
         cflags="${cflags} -fno-stack-check"
     fi
+    if gcc -v --help 2>&1 | grep -qw "\\-fstack\\-clash\\-protection"; then
+        cflags="${cflags} -fno-stack-clash-protection"
+    fi
     if gcc -v --help 2>&1 | grep -qw "\\-fstack\\-protector"; then
         cflags="${cflags} -fno-stack-protector"
     fi
-    if gcc -v --help 2>&1 | grep -qw "\\-fstack\\-clash\\-protection"; then
-        cflags="${cflags} -fno-stack-clash-protection"
+    if gcc -v --help 2>&1 | grep -qw "\\-funwind\\-tables"; then
+        cflags="${cflags} -fno-unwind-tables"
+    fi
+    if gcc -v --help 2>&1 | grep -qw "\\-fcf\\-protection="; then
+        cflags="${cflags} -fcf-protection=none"
+    fi
+    if gcc -v --help 2>&1 | grep -qw "\\-fdwarf2\\-cfi\\-asm"; then
+        cflags="${cflags} -fno-dwarf2-cfi-asm"
+    fi
+    if gcc -v --help 2>&1 | grep -qw "\\-fsplit\\-stack"; then
+        cflags="${cflags} -fno-split-stack"
     fi
 }
 
@@ -1832,17 +1843,22 @@ EOF
 cat >> ${php_prefix}/etc/php.ini << EOF
 
 [PHP]
-memory_limit=-1
-post_max_size=0
-upload_max_filesize=0
-max_file_uploads=50000
 extension=imagick.so
 zend_extension=opcache.so
 opcache.enable=1
 date.timezone=$timezone
+
 ;如果使用mysql，并且使用unix domain socket方式连接，请正确设置以下内容
 ;pdo_mysql.default_socket=/var/run/mysqld/mysqld.sock
 ;mysqli.default_socket=/var/run/mysqld/mysqld.sock
+
+memory_limit=-1
+post_max_size=0
+upload_max_filesize=9223372036854775807
+max_file_uploads=50000
+max_execution_time=0
+output_buffering=4096
+session.auto_start=0
 EOF
     install -m 644 "${php_prefix}/php-fpm.service.default" $php_service
 cat >> $php_service <<EOF
@@ -1951,6 +1967,7 @@ http {
 EOF
 cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
     client_max_body_size 0;
+    #client_body_timeout 300s;
     fastcgi_buffers 64 4K;
     gzip on;
     gzip_vary on;
@@ -1987,6 +2004,7 @@ cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
     location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/)  { return 404; }
     location ~ ^/(?:\\.|autotest|occ|issue|indie|db_|console)                { return 404; }
     location ~ \\.php(?:$|/) {
+        rewrite ^/(?!index|remote|public|cron|core\\/ajax\\/update|status|ocs\\/v[12]|updater\\/.+|oc[ms]-provider\\/.+|.+\\/richdocumentscode\\/proxy) /index.php\$request_uri;
         fastcgi_split_path_info ^(.+?\\.php)(/.*)$;
         set \$path_info \$fastcgi_path_info;
         try_files \$fastcgi_script_name =404;
@@ -2000,8 +2018,10 @@ cat > ${nginx_prefix}/conf.d/nextcloud.conf <<EOF
         fastcgi_pass unix:/dev/shm/php-fpm_unixsocket/php.sock;
         fastcgi_intercept_errors on;
         fastcgi_request_buffering off;
+        fastcgi_read_timeout 24h;
+        fastcgi_max_temp_file_size 0;
     }
-    location ~ \\.(?:css|js|svg|gif)$ {
+    location ~ \\.(?:css|js|svg|gif|png|jpg|ico)$ {
         try_files \$uri /index.php\$request_uri;
         expires 6M;
         access_log off;
@@ -2271,11 +2291,11 @@ server {
     listen unix:/dev/shm/nginx_unixsocket/h2.sock http2;
     server_name ${domain_list[$i]};
     add_header Strict-Transport-Security "max-age=63072000; includeSubdomains; preload" always;
-    #client_header_timeout 24h;
-    #ignore_invalid_headers off;
 EOF
         if [ $protocol_2 -ne 0 ]; then
 cat >> $nginx_config<<EOF
+    #client_header_timeout 24h;
+    #ignore_invalid_headers off;
     location = /$serviceName/TunMulti {
         client_max_body_size 0;
         client_body_timeout 24h;
@@ -3624,7 +3644,7 @@ simplify_system()
             LANG="en_US.UTF-8" LANGUAGE="en_US:en" dpkg -s "$i" 2>/dev/null | grep -qi 'status[ '$'\t]*:[ '$'\t]*install[ '$'\t]*ok[ '$'\t]*installed[ '$'\t]*$' && temp_backup+=("$i")
         done
         temp_backup+=($(dpkg --list 'grub*' | grep '^[ '$'\t]*ii[ '$'\t]' | awk '{print $2}'))
-        local temp_remove_list=('cron' 'anacron' '^cups' '^foomatic' 'openssl' 'snapd' 'kdump-tools' 'flex' 'make' 'automake' '^cloud-init' 'pkg-config' '^gcc-[1-9][0-9]*$' '^cpp-[1-9][0-9]*$' 'curl' '^python' '^libpython' 'dbus' 'at' 'open-iscsi' 'rsyslog' 'acpid' 'libnetplan0' 'glib-networking-common' 'bcache-tools' '^bind([0-9]|-|$)' 'lshw' 'thermald' '^libdbus' '^libevdev' '^libupower' 'readline-common' '^libreadline' 'xz-utils' 'selinux-utils' 'wget' 'zip' 'unzip' 'bzip2' 'finalrd' '^cryptsetup' '^libplymouth' '^lib.*-dev$' 'perl' '^perl-modules' '^x11' '^libx11' '^qemu' '^xdg-' '^libglib' '^libicu' '^libxml' '^liburing' '^libisc' '^libdns' '^isc-' 'net-tools' 'xxd' 'xkb-data' 'lsof' '^task' '^usb' '^libusb' '^doc' '^libwrap' '^libtext' '^libmagic' '^libpci' '^liblocale' '^keyboard' '^libuni[^s]' '^libpipe' 'man-db' '^manpages' '^liblock' '^liblog' '^libxapian' '^libpsl' '^libpap' '^libgs[0-9]' '^libpaper')
+        local temp_remove_list=('cron' 'anacron' '^cups' '^foomatic' 'openssl' 'snapd' 'kdump-tools' 'flex' 'make' 'automake' '^cloud-init' 'pkg-config' '^gcc-[1-9][0-9]*$' '^cpp-[1-9][0-9]*$' 'curl' '^python' '^libpython' 'dbus' 'at' 'open-iscsi' 'rsyslog' 'acpid' 'libnetplan0' 'glib-networking-common' 'bcache-tools' '^bind([0-9]|-|$)' 'lshw' '^thermald' '^libdbus' '^libevdev' '^libupower' 'readline-common' '^libreadline' 'xz-utils' 'selinux-utils' 'wget' 'zip' 'unzip' 'bzip2' 'finalrd' '^cryptsetup' '^libplymouth' '^lib.*-dev$' 'perl' '^perl-modules' '^x11' '^libx11' '^qemu' '^xdg-' '^libglib' '^libicu' '^libxml' '^liburing' '^libisc' '^libdns' '^isc-' 'net-tools' 'xxd' 'xkb-data' 'lsof' '^task' '^usb' '^libusb' '^doc' '^libwrap' '^libtext' '^libmagic' '^libpci' '^liblocale' '^keyboard' '^libuni[^s]' '^libpipe' 'man-db' '^manpages' '^liblock' '^liblog' '^libxapian' '^libpsl' '^libpap' '^libgs[0-9]' '^libpaper' '^postfix')
         #'^libp11' '^libtasn' '^libkey' '^libnet'
         if ! $debian_package_manager -y --auto-remove purge "${temp_remove_list[@]}"; then
             $debian_package_manager -y -f install
