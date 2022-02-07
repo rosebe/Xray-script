@@ -198,14 +198,16 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 |用途|Debian基系统|Red Hat基系统|
 |-|-|-|
 |yumdb set(标记包手动安装)||yum-utils|
+|dnf config-manager||dnf-plugins-core|
 |setenforce/getenforce(关闭SELinux)|selinux-utils|libselinux-utils|
 |ss(检查端口占用)|iproute2|iproute|
-|lsb_release(查看系统版本)|lsb-release|redhat-lsb-core|
-|wget/curl https|ca-certificates|ca-certificates|
 |wget|wget|wget|
 |curl|curl|curl|
+|wget/curl https|ca-certificates|ca-certificates|
 |kill/pkill/ps/sysctl/free|procps|procps-ng|
 |epel源||epel-release|
+|epel源||epel-next-release|
+|remi源||remi-release|
 |do-release-upgrade(升级系统)|ubuntu-release-upgrader-core||
 |unzip|unzip|unzip|
 |curl|curl|curl|
@@ -223,11 +225,12 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 ||openssl|openssl|
 ||cron|crontabs|
 |**编译openssl：**|||
-||perl-base(within libperl-dev)|perl-IPC-Cmd|
-||perl-modules-5.32(within libperl-dev)|perl-Getopt-Long|
-||libperl5.32(within libperl-dev)|perl-Data-Dumper|
+||perl-base(包含于libperl-dev)|perl-IPC-Cmd|
+||perl-modules-5.32(包含于libperl-dev)|perl-Getopt-Long|
+||libperl5.32(包含于libperl-dev)|perl-Data-Dumper|
+|||perl-FindBin|
 |**编译Nginx：**|||
-||libpcre3-dev|pcre-devel|
+||libpcre2-dev|pcre2-devel|
 ||zlib1g-dev|zlib-devel|
 |--with-http_xslt_module|libxml2-dev|libxml2-devel|
 |--with-http_xslt_module|libxslt1-dev|libxslt-devel|
@@ -235,7 +238,6 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 |--with-google_perftools_module|libgoogle-perftools-dev|gperftools-devel|
 |--with-http_geoip_module|libgeoip-dev|geoip-devel|
 |--with-http_perl_module||perl-ExtUtils-Embed|
-|--with-libatomic|libatomic-ops-dev|libatomic_ops-devel|
 ||libperl-dev|perl-devel|
 |**编译php：**|||
 ||pkg-config|pkgconf-pkg-config|
@@ -264,7 +266,7 @@ Xray默认使用的是GO语言官方提供的TLS库，这也是几乎所有GO语
 |--with-xpm|libxpm-dev|libXpm-devel|
 |--with-freetype|libfreetype6-dev|freetype-devel|
 |--with-gmp|libgmp-dev|gmp-devel|
-|--with-imap|libc-client2007e-dev|libc-client-devel|
+|--with-imap|libc-client2007e-dev|uw-imap-devel|
 |--enable-intl|libicu-dev|libicu-devel|
 |--with-ldap|libldap2-dev|openldap-devel|
 |--with-ldap-sasl|libsasl2-dev|openldap-devel|
